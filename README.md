@@ -34,7 +34,6 @@ cp .env.example .env
 ```bash
 OPENAI_API_KEY=your_key
 EMBEDDING_MODEL_NAME=text-embedding-3-small
-DJANGO_SETTINGS_MODULE=src.config.settings
 ```
 
 5. Start infrastructure (PostgreSQL + Redis):
