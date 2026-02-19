@@ -1,7 +1,6 @@
 from django.contrib import admin
 
-from src.core.models import CVDocument, Chunks
-
+from src.core.models import CVDocument, Chunks, UploadBatch, UploadItem
 
 @admin.register(CVDocument)
 class CVDocumentAdmin(admin.ModelAdmin):
@@ -24,3 +23,13 @@ class ChunksAdmin(admin.ModelAdmin):
         if value is None:
             return "-"
         return f"vector[{len(value)}]"
+
+@admin.register(UploadBatch)
+class UploadBatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "total_files", "processed_files","started_at", "created_at", "completed_at")
+    list_filter = ("created_at",)
+
+@admin.register(UploadItem)
+class UploadItemAdmin(admin.ModelAdmin):
+    list_display = ("id", "batch_id", "document_id", "started_at", "created_at", "completed_at", "status", "error_message")
+    list_filter = ("created_at",)
