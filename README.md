@@ -1,86 +1,107 @@
+<div align="center">
+
 # match-cv
 
-CV ingestion and matching service built with Django, pgvector, Datapizza pipelines, and Celery.
+**CV ingestion and matching service built with Django, pgvector, Datapizza pipelines, and Celery**
 
-## Requirements
+[![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
+[![Django](https://img.shields.io/badge/django-6.x-green.svg)](https://www.djangoproject.com/)
+[![Celery](https://img.shields.io/badge/celery-enabled-brightgreen.svg)](https://docs.celeryq.dev/)
+[![Ruff](https://img.shields.io/badge/code%20style-ruff-black.svg)](https://docs.astral.sh/ruff/)
+
+[🚀 Quick Start](#-quick-start-local) • [🔌 API](#-api-endpoints) • [🏗️ Architecture](#-architecture-overview) • [🧪 Testing](#-testing) • [📝 Notes](#-notes)
+
+</div>
+
+---
+
+## ⚙️ Requirements
 
 - Python `3.13+`
 - `uv`
 - Docker (recommended for PostgreSQL + Redis)
 
-## Local setup (uv + venv)
+## 🚀 Quick Start (Local)
 
-1. Create and activate virtualenv:
+1. Create and activate virtualenv.
 
 ```bash
 uv venv
 source .venv/bin/activate
 ```
 
-2. Install dependencies:
+2. Install dependencies.
 
 ```bash
 uv sync
 ```
 
-3. Create local env file from template:
+3. Create local env file from template.
 
 ```bash
 cp .env.example .env
 ```
 
-4. Configure environment variables (`.env`):
+4. Configure environment variables in `.env`.
 
 ```bash
 OPENAI_API_KEY=your_key
 EMBEDDING_MODEL_NAME=text-embedding-3-small
 ```
 
-5. Start infrastructure (PostgreSQL + Redis):
+5. Start infrastructure.
 
 ```bash
 docker compose up -d
 ```
 
-6. Run migrations:
+6. Run migrations.
 
 ```bash
 python manage.py migrate
 ```
 
-7. Start Django API:
+7. Start Django API.
 
 ```bash
 python manage.py runserver
 ```
 
-8. Start Celery worker (separate terminal):
+8. Start Celery worker (new terminal).
 
 ```bash
 celery -A src.config.celery worker -l info
 ```
 
-## Run tests
+## 🧪 Testing
+
+Run tests:
 
 ```bash
 pytest
 ```
 
-With coverage:
+Run tests with coverage:
 
 ```bash
 pytest --cov --cov-report=html
 ```
 
-## API endpoints
+## 🎨 Formatting
+
+```bash
+ruff format --config ./ruff.toml .
+```
+
+## 🔌 API Endpoints
 
 Base prefix: `/api/`
 
-### 1) Upload single CV
+### 1. Upload single CV
 
-- `POST /api/cv-documents/`
+- Method: `POST /api/cv-documents/`
 - Content-Type: `multipart/form-data`
-- Field: `source_file` (file)
+- File field: `source_file`
 
 Example:
 
@@ -89,15 +110,15 @@ curl -X POST http://127.0.0.1:8000/api/cv-documents/ \
   -F "source_file=@/absolute/path/cv.pdf"
 ```
 
-Response:
-- `201`: document created and ingested synchronously
-- `400`: validation error
+Responses:
+- `201` document created and ingested synchronously
+- `400` validation error
 
-### 2) Bulk upload CVs (async via Celery)
+### 2. Bulk upload CVs (async)
 
-- `POST /api/cv-documents/bulk/`
+- Method: `POST /api/cv-documents/bulk/`
 - Content-Type: `multipart/form-data`
-- Field: repeated `files` keys
+- File field: repeated `files`
 
 Example:
 
@@ -107,21 +128,22 @@ curl -X POST http://127.0.0.1:8000/api/cv-documents/bulk/ \
   -F "files=@/absolute/path/cv2.pdf"
 ```
 
-Response:
-- `202`: returns `batch_id` and `upload_item_id`s
+Responses:
+- `202` returns `batch_id` and `upload_item_id` list
+- `400` invalid multipart payload
 
-### 3) Bulk upload batch status
+### 3. Bulk upload batch status
 
-- `GET /api/cv-documents/bulk/<batch_id>/status/`
+- Method: `GET /api/cv-documents/bulk/<batch_id>/status/`
 
-Response includes:
+Response contains:
 - batch status (`PENDING|RUNNING|SUCCESS|FAILED|PARTIAL`)
 - counters (`total_files`, `processed_files`, `failed_files`)
-- per-item status and `error_message` if failed
+- per-item status and `error_message`
 
-### 4) Run matching pipeline
+### 4. Run matching pipeline
 
-- `POST /api/search-runs/`
+- Method: `POST /api/search-runs/`
 - Content-Type: `application/json`
 
 Example payload:
@@ -138,25 +160,28 @@ Example payload:
 }
 ```
 
-Response:
-- `200`: ranked candidate list
-- `400`: request validation error
-- `500`: pipeline/runtime error
+Responses:
+- `200` ranked candidate list
+- `400` request validation error
+- `500` pipeline/runtime error
 
-## Architecture overview
-# Search
-- split job offer (`skill`, `experience`, `education`) -> parallel category retrieval -> merge by document -> weighted scoring.
+## 🏗️ Architecture Overview
+
+### Search flow
+
+Split job offer (`skill`, `experience`, `education`) -> parallel category retrieval -> merge by document -> weighted scoring.
 
 ![Search Pipeline](docs/search_pipeline.drawio.png)
 
-# Upload
-- **Single upload**: API -> serializer -> metadata extraction -> embedding -> vector store write.
-- **Bulk upload**: API creates batch/items -> Celery task per item -> status polling endpoint.
+### Upload flow
 
-![upload flow](docs/upload_flow.drawio.png)
+- Single upload: API -> serializer -> metadata extraction -> embedding -> vector store write
+- Bulk upload: API creates batch/items -> Celery task per item -> status polling endpoint
 
-## Notes
+![Upload Flow](docs/upload_flow.drawio.png)
 
-- Use multipart file upload for CV endpoints. JSON file paths are not accepted.
-- If Celery worker is down, bulk upload items stay `PENDING`.
-- pgvector metadata should be JSON-serializable; UUIDs are converted safely in the vector store layer.
+## 📝 Notes
+
+- CV upload endpoints require multipart file upload; JSON file paths are not accepted.
+- If Celery worker is not running, bulk upload items remain in `PENDING`.
+- Vector metadata must be JSON-serializable; UUID handling is normalized in vector store code.
