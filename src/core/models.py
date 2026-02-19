@@ -81,7 +81,8 @@ class UploadItem(models.Model):
     class Meta:
         ordering = ["created_at"]
 
-class Chunks(models.Model):
+
+class Chunk(models.Model):
     """Persisted text chunks and embeddings for each CV document."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

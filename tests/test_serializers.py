@@ -45,8 +45,8 @@ def test_cv_upload_serializer_create_maps_extracted_metadata(
     )
 
     with (
-        patch("src.core.serializers.InjectDocument", return_value=mock_inject),
-        patch("src.core.serializers.PgVectorStore") as mock_vector_store_cls,
+        patch("src.core.services.ingestion.InjectDocument", return_value=mock_inject),
+        patch("src.core.services.ingestion.PgVectorStore") as mock_vector_store_cls,
     ):
         mock_vector_store = mock_vector_store_cls.return_value
         mock_vector_store.add.return_value = len(chunks)

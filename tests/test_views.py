@@ -70,4 +70,4 @@ def test_search_run_create_view_pipeline_error(mock_pipeline_cls, api_client):
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["error"] == "pipeline failed"
+    assert response.json()["error"] == "internal server error"

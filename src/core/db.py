@@ -1,17 +1,18 @@
 from __future__ import annotations
+
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import transaction
+from django.db.models import TextField, Value
+from django.db.models.functions import Cast, Coalesce
+from datapizza.core.vectorstore import Vectorstore
+from datapizza.type import Chunk as DpChunk
 from pgvector.django import CosineDistance
 
-from datapizza.core.vectorstore import Vectorstore
-from datapizza.type import Chunk
-
-from src.core.models import Chunks
+from src.core.models import CVDocument, Chunk
 
 
 class PgVectorStore(Vectorstore):
-    """
-    Esteso il vectorStore per utilizzare PGVector
-    """
+    """Vectorstore implementation backed by PostgreSQL + pgvector."""
 
     DEFAULT_DIMENSIONS = 1536
 
@@ -26,10 +27,10 @@ class PgVectorStore(Vectorstore):
             )
 
     @transaction.atomic
-    def add(self, chunk: Chunk | list[Chunk], collection_name: str | None = None):
+    def add(self, chunk: DpChunk | list[DpChunk], collection_name: str | None = None):
         """
-        Aggiunge uno o più chunk nella tabella Chunks.
-        collection_name non è usato qui ma presente nell'interfaccia.
+        Add chunks to the database.
+        Collection_name is just a placeholder
         """
         chunks = chunk if isinstance(chunk, list) else [chunk]
 
@@ -38,7 +39,7 @@ class PgVectorStore(Vectorstore):
                 continue
             vec = c.embeddings[0].vector
             self._validate_embedding(vec)
-            Chunks.objects.update_or_create(
+            Chunk.objects.update_or_create(
                 id=c.id,
                 defaults={
                     "document_id": c.metadata.get("document_id"),
@@ -51,8 +52,8 @@ class PgVectorStore(Vectorstore):
 
         return len(chunks)
 
-    async def a_add(self, chunk: Chunk | list[Chunk], collection_name: str | None = None):
-        # asincrono ma usa DB sync quindi chiama sync, solo un override
+    async def a_add(self, chunk: DpChunk | list[DpChunk], collection_name: str | None = None):
+        # Async interface delegates to sync DB implementation.
         return self.add(chunk, collection_name)
 
     def update(
@@ -62,13 +63,9 @@ class PgVectorStore(Vectorstore):
         points: list[int],
         **kwargs,
     ):
-        """
-        Aggiorna chunks esistenti.
-        payload può includere nuovi campi da aggiornare (testo / metadati).
-        points è la lista di chunk id da aggiornare.
-        """
+        """Update existing chunk rows by ids."""
         for pid in points:
-            Chunks.objects.filter(id=pid).update(**payload)
+            Chunk.objects.filter(id=pid).update(**payload)
         return len(points)
 
     def remove(
@@ -77,10 +74,8 @@ class PgVectorStore(Vectorstore):
         ids: list[str],
         **kwargs,
     ):
-        """
-        Rimuove i chunk con id nella lista.
-        """
-        deleted, _ = Chunks.objects.filter(id__in=ids).delete()
+        """Remove chunks by ids."""
+        deleted, _ = Chunk.objects.filter(id__in=ids).delete()
         return deleted
 
     def search(
@@ -90,29 +85,26 @@ class PgVectorStore(Vectorstore):
         k: int = 10,
         vector_name: str | None = None,
         **kwargs,
-    ) -> list[Chunk]:
-        """
-        cosine distance
-        su embedding pgvector.
-        """
+    ) -> list[DpChunk]:
+        """Search chunks with cosine distance over pgvector embeddings."""
         self._validate_embedding(query_vector)
 
-        qs = Chunks.objects.all()
+        qs = Chunk.objects.all()
         hits = (
             qs.annotate(distance=CosineDistance("embedding", query_vector))
             .order_by("distance")[:k]
             .values("id", "document_id", "chunk_index", "text_chunk", "metadata", "distance")
         )
 
-        results: list[Chunk] = []
+        results: list[DpChunk] = []
         for r in hits:
+            # pgvector returns distance; convert to similarity in [0, 1].
             sim = max(0.0, 1.0 - float(r["distance"]))
             metadata = r["metadata"] if "metadata" in r else {}
-            # metadata["similarity"] = sim
             metadata["similarity"] = sim
             metadata["document_id"] = str(r["document_id"])
             results.append(
-                Chunk(
+                DpChunk(
                     id=str(r["id"]),
                     text=r["text_chunk"],
                     embeddings=[],
@@ -129,18 +121,54 @@ class PgVectorStore(Vectorstore):
         k: int = 10,
         vector_name: str | None = None,
         **kwargs,
-    ) -> list[Chunk]:
-        # asincrono: delega alla sync per pgVector
+    ) -> list[DpChunk]:
+        # Async interface delegates to sync DB implementation.
         return self.search(collection_name, query_vector, k, vector_name, **kwargs)
 
-    def retrieve(self, collection_name: str, ids: list[str], **kwargs) -> list[Chunk]:
-        """
-        Recupera chunk per ID.
-        """
-        dbrows = Chunks.objects.filter(id__in=ids).values("id", "text_chunk", "metadata")
+    def retrieve(self, collection_name: str, ids: list[str], **kwargs) -> list[DpChunk]:
+        """Retrieve chunks by ids."""
+        dbrows = Chunk.objects.filter(id__in=ids).values("id", "text_chunk", "metadata")
         return [
-            Chunk(
+            DpChunk(
                 id=str(r["id"]), text=r["text_chunk"], embeddings=[], metadata=r["metadata"] or {}
             )
             for r in dbrows
         ]
+
+    @staticmethod
+    def search_metadata(query: str, category: str, k: int = 10) -> dict:
+        """
+        Full-text search over CVDocument metadata+text using PostgreSQL ts_rank.
+        Returns an object compatible with retrieve pipeline shape:
+        {"retriever": [{"metadata": {"document_id": "...", "similarity": rank}}, ...]}
+        """
+        q = (query or "").strip()
+        if not q:
+            return {"retriever": []}
+
+        query_obj = SearchQuery(q, search_type="plain")
+        text_expr = Coalesce("raw_text", Value(""), output_field=TextField())
+        metadata_expr = Coalesce(Cast("metadata", TextField()), Value(""), output_field=TextField())
+
+        if category == "skill":
+            vector = SearchVector(text_expr, weight="A") + SearchVector(metadata_expr, weight="A")
+        elif category == "experience":
+            vector = SearchVector(text_expr, weight="A") + SearchVector(metadata_expr, weight="B")
+        elif category == "education":
+            vector = SearchVector(text_expr, weight="B") + SearchVector(metadata_expr, weight="A")
+        else:
+            vector = SearchVector(text_expr, weight="A") + SearchVector(metadata_expr, weight="A")
+
+        rows = (
+            CVDocument.objects.annotate(search=vector)
+            .annotate(rank=SearchRank(vector, query_obj))
+            .filter(rank__gt=0.0)
+            .order_by("-rank")[: max(1, int(k))]
+            .values("id", "rank")
+        )
+
+        retriever = [
+            {"metadata": {"document_id": str(r["id"]), "similarity": float(r["rank"])}}
+            for r in rows
+        ]
+        return {"retriever": retriever}

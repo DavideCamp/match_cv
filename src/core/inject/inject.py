@@ -1,5 +1,5 @@
 import json
-from typing import Any, List
+from typing import Any
 
 import environ
 from datapizza.clients.openai import OpenAIClient

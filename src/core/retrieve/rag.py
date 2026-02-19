@@ -1,6 +1,5 @@
 import environ
 from datapizza.clients.openai import OpenAIClient
-from datapizza.core.models import PipelineComponent
 from datapizza.embedders.openai import OpenAIEmbedder
 from datapizza.modules.prompt import ChatPromptTemplate
 from datapizza.modules.rewriters import ToolRewriter
@@ -37,15 +36,10 @@ class RagPipeline(DagPipeline):
 
         self.add_module("rewriter", self.query_rewriter)
         self.add_module("embedder", self.embedder)
-        self.add_module(
-            "retriever", self.vector_store
-        )  # TODO FIX LIBRARY Expected type 'PipelineComponent', got 'PgVectorStore' instead --- Funziona
-        self.add_module("retrieve_cvs", self.prompt_template)
-        # self.add_module("prompt", self.prompt_template)
-        # self.add_module("generator", self.openai_client) #TODO FIX LIBRARY TYPING Expected type 'PipelineComponent', got 'OpenAIClient' instead --- FUNZIONA
+        # TODO - Open issue: Runtime is correct but static typing in datapizza is stricter.
+        self.add_module("retriever", self.vector_store)
+        self.add_module("prompt", self.prompt_template)
 
         self.connect("rewriter", "embedder", target_key="text")
         self.connect("embedder", "retriever", target_key="query_vector")
-
-        # self.connect("retriever", "prompt", target_key="chunks")
-        # self.connect("prompt", "generator", target_key="memory")
+        self.connect("retriever", "prompt", target_key="chunks")

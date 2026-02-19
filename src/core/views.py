@@ -2,15 +2,17 @@
 
 import logging
 
-from django.db import transaction
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from src.core.models import CVDocument, UploadBatch, UploadStatus
+from src.core.models import UploadBatch
 from src.core.retrieve.pipeline import CvScreenPipeline
-from src.core.serializers import CVUploadSerializer
-from src.core.tasks import ingest_upload_item_task
+from src.core.serializers import (
+    CVBulkUploadCreateSerializer,
+    CVUploadSerializer,
+    SearchRunRequestSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,82 +35,52 @@ class SearchRunCreateView(APIView):
 
     def post(self, request):
         """Run retrieval+scoring pipeline for a job offer and return ranked CVs."""
-        job_offer_text = (request.data.get("job_offer_text") or "").strip()
-        weights = request.data.get("weights", None)
-        if not job_offer_text:
-            return Response(
-                {"error": "job_offer_text is required"}, status=status.HTTP_400_BAD_REQUEST
-            )
+        serializer = SearchRunRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            if "job_offer_text" in serializer.errors:
+                return Response(
+                    {"error": "job_offer_text is required"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if "top_k" in serializer.errors:
+                return Response(
+                    {"error": "top_k must be integers"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            top_k = int(request.data.get("top_k", 10))
-        except (TypeError, ValueError):
-            return Response({"error": "top_k must be integers"}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
+            payload = serializer.validated_data
             pipeline = CvScreenPipeline()
-            res = pipeline.run(job_offer_text, weights, top_k)
-            return Response(res, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            results = pipeline.run(
+                payload["job_offer_text"],
+                payload["weights"],
+                payload["top_k"],
+            )
+            return Response(results, status=status.HTTP_200_OK)
+        except Exception:
+            logger.exception("search pipeline execution failed")
+            return Response(
+                {"error": "internal server error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class CVBulkUploadView(APIView):
     """Upload multiple CV files and process ingestion asynchronously via Celery."""
 
-    @transaction.atomic
     def post(self, request):
-        """Create batch/items and enqueue one Celery ingestion task per file."""
+        """Validate files and delegate bulk creation to serializer."""
         files = request.FILES.getlist("files")
         if not files:
             return Response(
                 {"error": "files is required (multipart files[])"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        batch = UploadBatch.objects.create(
-            status=UploadStatus.PENDING,
-            total_files=len(files),
-            processed_files=0,
-            failed_files=0,
-        )
-
-        items_payload = []
-        for file_obj in files:
-            serializer = CVUploadSerializer(data={"source_file": file_obj})
-            if not serializer.is_valid():
-                logger.warning("Bulk upload validation failed for %s: %s", file_obj.name, serializer.errors)
-                return Response(
-                    {"error": "file validation failed", "filename": file_obj.name, "details": serializer.errors},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            document = CVDocument.objects.create(source_file=file_obj)
-            item = batch.items.create(
-                document=document,
-                filename=file_obj.name,
-                status=UploadStatus.PENDING,
-            )
-            ingest_upload_item_task.delay(str(item.id))
-            items_payload.append(
-                {
-                    "upload_item_id": str(item.id),
-                    "document_id": str(document.id),
-                    "filename": item.filename,
-                    "status": item.status,
-                }
-            )
-
-        return Response(
-            {
-                "batch_id": str(batch.id),
-                "status": batch.status,
-                "total_files": batch.total_files,
-                "items": items_payload,
-            },
-            status=status.HTTP_202_ACCEPTED,
-        )
+        serializer = CVBulkUploadCreateSerializer(data={"files": files})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        payload = serializer.save()
+        return Response(payload, status=status.HTTP_202_ACCEPTED)
 
 
 class CVBulkUploadStatusView(APIView):

@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from src.core.models import CVDocument, Chunks, UploadBatch, UploadItem
+from src.core.models import CVDocument, Chunk, UploadBatch, UploadItem
+
 
 @admin.register(CVDocument)
 class CVDocumentAdmin(admin.ModelAdmin):
@@ -9,7 +10,8 @@ class CVDocumentAdmin(admin.ModelAdmin):
     search_fields = ("candidate_name", "email", "source_checksum")
     readonly_fields = ("id", "created_at", "updated_at", "ingested_at")
 
-@admin.register(Chunks)
+
+@admin.register(Chunk)
 class ChunksAdmin(admin.ModelAdmin):
     list_display = ("id", "document", "chunk_index", "embedding_preview", "created_at")
     list_filter = ("created_at",)
@@ -24,12 +26,30 @@ class ChunksAdmin(admin.ModelAdmin):
             return "-"
         return f"vector[{len(value)}]"
 
+
 @admin.register(UploadBatch)
 class UploadBatchAdmin(admin.ModelAdmin):
-    list_display = ("id", "total_files", "processed_files","started_at", "created_at", "completed_at")
+    list_display = (
+        "id",
+        "total_files",
+        "processed_files",
+        "started_at",
+        "created_at",
+        "completed_at",
+    )
     list_filter = ("created_at",)
+
 
 @admin.register(UploadItem)
 class UploadItemAdmin(admin.ModelAdmin):
-    list_display = ("id", "batch_id", "document_id", "started_at", "created_at", "completed_at", "status", "error_message")
+    list_display = (
+        "id",
+        "batch_id",
+        "document_id",
+        "started_at",
+        "created_at",
+        "completed_at",
+        "status",
+        "error_message",
+    )
     list_filter = ("created_at",)

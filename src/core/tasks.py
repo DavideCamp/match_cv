@@ -5,17 +5,14 @@ from __future__ import annotations
 from celery import shared_task
 from django.utils import timezone
 
-from src.core.db import PgVectorStore
-from src.core.inject.inject import InjectDocument
 from src.core.models import CVDocument, UploadBatch, UploadItem, UploadStatus
+from src.core.services.ingestion import ingest_cv_document
 
 
 def _refresh_batch_status(batch: UploadBatch) -> None:
     """Recompute aggregate batch counters/status from related UploadItem states."""
     total = batch.items.count()
-    processed = batch.items.filter(
-        status__in=[UploadStatus.SUCCESS, UploadStatus.FAILED]
-    ).count()
+    processed = batch.items.filter(status__in=[UploadStatus.SUCCESS, UploadStatus.FAILED]).count()
     failed = batch.items.filter(status=UploadStatus.FAILED).count()
 
     if processed == 0:
@@ -53,10 +50,18 @@ def _refresh_batch_status(batch: UploadBatch) -> None:
     )
 
 
-@shared_task(name="core.ingest_upload_item_task")
-def ingest_upload_item_task(upload_item_id: str) -> str:
+@shared_task(bind=True, name="core.ingest_upload_item_task")
+def ingest_upload_item_task(self, upload_item_id: str) -> str:
     """Ingest one UploadItem end-to-end and update both item and batch status."""
-    item = UploadItem.objects.select_related("batch", "document").get(id=upload_item_id)
+    max_retries = 3
+    item = UploadItem.objects.select_related("batch", "document").filter(id=upload_item_id).first()
+    if item is None:
+        if self.request.retries < max_retries:
+            raise self.retry(
+                exc=ValueError(f"UploadItem {upload_item_id} not found yet"),
+                countdown=2 ** (self.request.retries + 1),
+            )
+        raise ValueError(f"UploadItem {upload_item_id} not found")
     if item.status == UploadStatus.SUCCESS:
         return str(item.id)
 
@@ -76,42 +81,19 @@ def ingest_upload_item_task(upload_item_id: str) -> str:
             raise ValueError("Upload item has no associated CVDocument")
 
         document = CVDocument.objects.get(id=item.document_id)
-        inject_document = InjectDocument().from_yaml("src/core/inject/injestion_pipeline.yaml")
-        vector_store = PgVectorStore()
-
-        extracted = inject_document.extract_metadata(document.source_file.path)
-        embed_doc = inject_document.run(
-            extracted.get("text", ""), metadata=extracted.get("metadata", {})
-        )
-
-        document.ingested_at = timezone.now()
-        document.raw_text = extracted.get("text", "") or ""
-        document.metadata = extracted.get("metadata", {}) or {}
-        document.candidate_name = document.metadata.get("candidate_name", "") or ""
-        document.email = (
-            document.metadata.get("contact", {}).get("email", "") or ""
-            if isinstance(document.metadata, dict)
-            else ""
-        )
-        document.save(
-            update_fields=[
-                "ingested_at",
-                "updated_at",
-                "raw_text",
-                "metadata",
-                "email",
-                "candidate_name",
-            ]
-        )
-
-        for chunk in embed_doc:
-            chunk.metadata["document_id"] = str(document.id)
-        vector_store.add(embed_doc)
+        ingest_cv_document(document)
 
         item.status = UploadStatus.SUCCESS
         item.completed_at = timezone.now()
         item.save(update_fields=["status", "completed_at"])
     except Exception as exc:  # noqa: BLE001
+        if self.request.retries < max_retries:
+            item.status = UploadStatus.PENDING
+            item.error_message = f"retrying ({self.request.retries + 1}/{max_retries}): {exc}"
+            item.save(update_fields=["status", "error_message"])
+            _refresh_batch_status(batch)
+            raise self.retry(exc=exc, countdown=2 ** (self.request.retries + 1))
+
         item.status = UploadStatus.FAILED
         item.error_message = str(exc)
         item.completed_at = timezone.now()
@@ -120,7 +102,6 @@ def ingest_upload_item_task(upload_item_id: str) -> str:
         _refresh_batch_status(batch)
 
     return str(item.id)
-
 
 
 @shared_task(name="core.ping")
