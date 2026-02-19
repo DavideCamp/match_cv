@@ -1,0 +1,54 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 972 >>
+stream
+BT
+/F1 11 Tf
+1 0 0 1 50 800 Tm (Andrea Verdi) Tj
+1 0 0 1 50 786 Tm (Email: andrea.verdi@example.com) Tj
+1 0 0 1 50 772 Tm (Location: Bologna, IT) Tj
+1 0 0 1 50 758 Tm () Tj
+1 0 0 1 50 744 Tm (PROFILE) Tj
+1 0 0 1 50 730 Tm (DevOps Engineer, 7 years experience in cloud infrastructure and observability.) Tj
+1 0 0 1 50 716 Tm () Tj
+1 0 0 1 50 702 Tm (EXPERIENCE) Tj
+1 0 0 1 50 688 Tm (DevOps Engineer - CloudScale \(2021-2026\)) Tj
+1 0 0 1 50 674 Tm (- Kubernetes platform management) Tj
+1 0 0 1 50 660 Tm (- Terraform IaC and GitOps workflows) Tj
+1 0 0 1 50 646 Tm () Tj
+1 0 0 1 50 632 Tm (System Engineer - NetOps Italia \(2019-2021\)) Tj
+1 0 0 1 50 618 Tm (- Linux automation with Ansible) Tj
+1 0 0 1 50 604 Tm () Tj
+1 0 0 1 50 590 Tm (EDUCATION) Tj
+1 0 0 1 50 576 Tm (BSc Computer Engineering - University of Bologna) Tj
+1 0 0 1 50 562 Tm () Tj
+1 0 0 1 50 548 Tm (SKILLS) Tj
+1 0 0 1 50 534 Tm (Kubernetes, Terraform, AWS, GCP, Ansible, Prometheus, Grafana, Python) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001264 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1334
+%%EOF
