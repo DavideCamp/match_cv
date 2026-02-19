@@ -20,7 +20,7 @@ def test_cv_upload_view_success(mock_serializer_cls, api_client, make_uploaded_f
     )
 
     assert response.status_code == status.HTTP_201_CREATED
-    mock_serializer.is_valid.assert_called_once_with(raise_exception=True)
+    mock_serializer.is_valid.assert_called_once_with()
     mock_serializer.save.assert_called_once()
 
 
