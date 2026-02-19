@@ -1,0 +1,25 @@
+constants:
+  EMBEDDING_MODEL: "text-embedding-3-small"
+  CHUNK_SIZE: 1000
+
+ingestion_pipeline:
+  clients:
+    openai_embedder:
+      provider: openai
+      model: "${EMBEDDING_MODEL_NAME}"
+      api_key: "${OPENAI_API_KEY}"
+
+  modules:
+    - name: parser
+      type: TextParser
+      module: datapizza.modules.parsers
+    - name: splitter
+      type: NodeSplitter
+      module: datapizza.modules.splitters
+      params:
+        max_char: 1000
+    - name: embedder
+      type: ChunkEmbedder
+      module: datapizza.embedders
+      params:
+        client: openai_embedder
