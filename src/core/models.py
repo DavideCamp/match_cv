@@ -28,6 +28,59 @@ class CVDocument(models.Model):
     def __str__(self) -> str:
         return f"{self.candidate_name} ({self.id})"
 
+
+class UploadStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending"
+    RUNNING = "RUNNING", "Running"
+    SUCCESS = "SUCCESS", "Success"
+    FAILED = "FAILED", "Failed"
+    PARTIAL = "PARTIAL", "Partial"
+
+
+class UploadBatch(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    status = models.CharField(
+        max_length=16,
+        choices=UploadStatus.choices,
+        default=UploadStatus.PENDING,
+        db_index=True,
+    )
+    total_files = models.PositiveIntegerField(default=0)
+    processed_files = models.PositiveIntegerField(default=0)
+    failed_files = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class UploadItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(UploadBatch, on_delete=models.CASCADE, related_name="items")
+    document = models.ForeignKey(
+        CVDocument,
+        on_delete=models.SET_NULL,
+        related_name="upload_items",
+        null=True,
+        blank=True,
+    )
+    filename = models.CharField(max_length=255, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=UploadStatus.choices,
+        default=UploadStatus.PENDING,
+        db_index=True,
+    )
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
 class Chunks(models.Model):
     """Persisted text chunks and embeddings for each CV document."""
 

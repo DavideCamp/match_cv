@@ -23,7 +23,7 @@ class JobProposalSplit(BaseModel):
 
 
 def calculate_score(occ: Tuple[str, dict], weights: dict[str, float]) -> dict[str, Any]:
-    """for a cv, multiply per-category similarity by weights, then return cv with final score"""
+    """Compute weighted score for one CV from per-category similarity values."""
     cv_id = occ[0]
     categories = occ[1]
     score = 0.0
@@ -40,19 +40,7 @@ def calculate_score(occ: Tuple[str, dict], weights: dict[str, float]) -> dict[st
 
 
 def find_occurrences(semantic_result: dict[str, Any]) -> dict[str, dict[str, float]]:
-    """
-    Aggregate by document_id across skill/education/experience.
-    Output format:
-    [
-      {
-        "<cvId>": {
-          "skill": <distance or 0>,
-          "education": <distance or 0>,
-          "experience": <distance or 0>
-        }
-      }
-    ]
-    """
+    """Aggregate best similarity per document across skill/education/experience searches."""
     categories = ("skill", "education", "experience")
     occ = {}
 
@@ -96,6 +84,7 @@ def find_occurrences(semantic_result: dict[str, Any]) -> dict[str, dict[str, flo
 
 
 def _run_category_search(query: str, k: int) -> dict[str, Any]:
+    """Run one RAG retrieval for a single category query."""
     q = (query or "").strip()
     if not q:
         return {}
@@ -117,6 +106,7 @@ def _run_category_search(query: str, k: int) -> dict[str, Any]:
 
 
 def semantic_search(job_details: JobProposalSplit, k: int = 25) -> dict[str, Any]:
+    """Run skill/education/experience searches in parallel and return grouped outputs."""
     category_queries = {
         "skill": job_details.skill,
         "education": job_details.education,
@@ -142,6 +132,7 @@ class CvScreenPipeline:
         self.client = OpenAIClient(model="gpt-4o-mini", api_key=API_KEY)
 
     def split_job_description(self, job_offer_text: str) -> JobProposalSplit:
+        """Extract normalized search queries for the three retrieval categories."""
         resp = self.client.structured_response(
             input=job_offer_text,
             output_cls=JobProposalSplit,
@@ -157,6 +148,7 @@ class CvScreenPipeline:
         return resp.structured_data[0]  # TODO FIX THE LIBARY TYPE - MA FUNZIONA
 
     def run(self, job_description, weights: dict[str, float], top_k: int) -> list[dict[str, Any]]:
+        """Execute full retrieval pipeline and return scored CV results."""
         job_details = self.split_job_description(job_description)
         semantic_result = semantic_search(job_details)
         occurrences = find_occurrences(semantic_result)
