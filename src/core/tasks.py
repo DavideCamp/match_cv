@@ -5,7 +5,7 @@ from __future__ import annotations
 from celery import shared_task
 from django.utils import timezone
 
-from src.core.inject.extraction import CVIngestionPipeline
+from src.core.inject.injection import CVIngestionPipeline
 from src.core.models import CVDocument, UploadBatch, UploadItem, UploadStatus
 
 

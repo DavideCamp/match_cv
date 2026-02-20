@@ -7,7 +7,7 @@ import pytest
 from datapizza.clients.mock_client import MockClient
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from src.core.inject.extraction import CVIngestionPipeline
+from src.core.inject.injection import CVIngestionPipeline
 
 
 class MockInjectDocument(CVIngestionPipeline):

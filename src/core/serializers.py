@@ -1,7 +1,7 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from src.core.inject.extraction import CVIngestionPipeline
+from src.core.inject.injection import CVIngestionPipeline
 from src.core.models import CVDocument, UploadBatch, UploadStatus
 from src.core.tasks import ingest_upload_item_task
 
