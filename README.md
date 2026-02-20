@@ -19,6 +19,23 @@ Higher weight means stronger impact on the final ranking.
 
 ---
 
+## 🏗️ Architecture Overview
+
+### Search flow
+
+Split job offer (`skill`, `experience`, `education`) -> parallel category retrieval for semantic search and full text search on metadata -> merge by document -> weighted scoring.
+
+![Search Pipeline](docs/search_pipeline.drawio.png)
+
+### Upload flow
+
+- Single upload: API -> serializer -> metadata extraction -> embedding -> vector store write
+- Bulk upload: API creates batch/items -> Celery task per item -> status polling endpoint
+
+![Upload Flow](docs/upload_flow.drawio.png)
+
+
+
 ## ⚙️ Requirements
 
 - Python `3.13+`
@@ -65,7 +82,7 @@ docker compose up -d
 python manage.py migrate
 ```
 
-7. Start Django API.
+7. Start Django server.
 
 ```bash
 python manage.py runserver
@@ -169,20 +186,6 @@ Responses:
 - `400` request validation error
 - `500` pipeline/runtime error
 
-## 🏗️ Architecture Overview
-
-### Search flow
-
-Split job offer (`skill`, `experience`, `education`) -> parallel category retrieval for semantic search and full text search on metadata -> merge by document -> weighted scoring.
-
-![Search Pipeline](docs/search_pipeline.drawio.png)
-
-### Upload flow
-
-- Single upload: API -> serializer -> metadata extraction -> embedding -> vector store write
-- Bulk upload: API creates batch/items -> Celery task per item -> status polling endpoint
-
-![Upload Flow](docs/upload_flow.drawio.png)
 
 ## 📝 Notes
 
