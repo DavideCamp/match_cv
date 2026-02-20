@@ -1,11 +1,13 @@
 import json
+from pathlib import Path
 from typing import Any
 
 import environ
 from datapizza.clients.openai import OpenAIClient
 from datapizza.embedders.openai import OpenAIEmbedder
 from datapizza.pipeline import IngestionPipeline
-from datapizza.type import MediaBlock, Media
+from datapizza.type import Chunk as DPChunk
+from datapizza.type import Media, MediaBlock
 from django.utils import timezone
 
 from src.core.db import PgVectorStore
@@ -15,9 +17,9 @@ env = environ.Env()
 
 
 class CVIngestionPipeline(IngestionPipeline):
-    DEFAULT_VECTOR_DIMENSIONS = 1536
+    """Pipeline that extracts CV text/metadata, converts text into chunks, embeds them, and stores them."""
 
-    def __init__(self):
+    def __init__(self, config_path: str | None):
         super().__init__()
         self.embedding_model_name = env.str("EMBEDDING_MODEL_NAME")
         api_key = env.str("OPENAI_API_KEY", default=env.str("OPENAIE_API_KEY", default=""))
@@ -32,7 +34,9 @@ class CVIngestionPipeline(IngestionPipeline):
         self.client = OpenAIClient(
             api_key=api_key,
         )
-        self.vector_store = PgVectorStore()
+        default_config_path = Path(__file__).with_name("injestion_pipeline.yaml")
+        self.from_yaml(config_path if config_path else str(default_config_path))
+        self.db_vector_store = PgVectorStore()
 
     @staticmethod
     def _parse_extraction_response(raw_text: str) -> dict[str, Any]:
@@ -202,6 +206,8 @@ METADATA_JSON:
     def ingest_cv_document(self, document) -> CVDocument:
         extracted = self.extract_metadata(document.source_file.path)
         chunks = super().run(extracted.get("text", ""), metadata=extracted.get("metadata", {}))
+        if not isinstance(chunks, list) or not all(isinstance(chunk, DPChunk) for chunk in chunks):
+            raise ValueError("Ingestion pipeline output must be a list of Chunk objects")
         document.ingested_at = timezone.now()
         document.raw_text = extracted.get("text", "") or ""
         document.metadata = extracted.get("metadata", {}) or {}
@@ -224,5 +230,5 @@ METADATA_JSON:
 
         for chunk in chunks:
             chunk.metadata["document_id"] = str(document.id)
-        self.vector_store.add(chunks)
+        self.db_vector_store.add(chunks)
         return document

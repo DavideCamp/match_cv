@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import environ
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import transaction
 from django.db.models import TextField, Value
@@ -10,11 +11,12 @@ from pgvector.django import CosineDistance
 
 from src.core.models import CVDocument, Chunk
 
+env = environ.Env()
 
 class PgVectorStore(Vectorstore):
     """Vectorstore implementation backed by PostgreSQL + pgvector."""
 
-    DEFAULT_DIMENSIONS = 1536
+    DEFAULT_DIMENSIONS = env.int("EMBEDDING_DIM", 1536)
 
     def __init__(self, dimensions: int = DEFAULT_DIMENSIONS):
         super().__init__()
