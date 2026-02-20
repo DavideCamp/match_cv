@@ -11,3 +11,5 @@ wheels/
 .env
 .idea/*
 media/cv_uploads
+.coverage
+htmlcov

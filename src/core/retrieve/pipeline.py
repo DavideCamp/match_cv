@@ -240,9 +240,9 @@ class CvScreenPipeline:
 
         return {
             doc_id: {
-                Category.SKILL.value: by_category[Category.SKILL.value].get(doc_id, 0.0),
-                Category.EDUCATION.value: by_category[Category.EDUCATION.value].get(doc_id, 0.0),
-                Category.EXPERIENCE.value: by_category[Category.EXPERIENCE.value].get(doc_id, 0.0),
+                Category.SKILL: by_category[Category.SKILL.value].get(doc_id, 0.0),
+                Category.EDUCATION: by_category[Category.EDUCATION.value].get(doc_id, 0.0),
+                Category.EXPERIENCE: by_category[Category.EXPERIENCE.value].get(doc_id, 0.0),
             }
             for doc_id in all_doc_ids
         }
@@ -274,14 +274,14 @@ class CvScreenPipeline:
     def compute_metadata(self, job_details: JobProposalSplit, k: int = 25) -> dict[str, Any]:
         """Compute metadata-only retrieval for skill/education/experience in parallel."""
         category_queries = {
-            Category.SKILL.value: job_details.skill,
-            Category.EDUCATION.value: job_details.education,
-            Category.EXPERIENCE.value: job_details.experience,
+            Category.SKILL: job_details.skill,
+            Category.EDUCATION: job_details.education,
+            Category.EXPERIENCE: job_details.experience,
         }
         out: dict[str, Any] = {
-            Category.SKILL.value: {"retriever": []},
-            Category.EDUCATION.value: {"retriever": []},
-            Category.EXPERIENCE.value: {"retriever": []},
+            Category.SKILL: {"retriever": []},
+            Category.EDUCATION: {"retriever": []},
+            Category.EXPERIENCE: {"retriever": []},
         }
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_map = {
@@ -316,15 +316,15 @@ class CvScreenPipeline:
     def semantic_search(self, job_details: JobProposalSplit, k: int = 25) -> dict[str, Any]:
         """Run skill/education/experience searches in parallel and return grouped outputs."""
         category_queries = {
-            Category.SKILL.value: job_details.skill,
-            Category.EDUCATION.value: job_details.education,
-            Category.EXPERIENCE.value: job_details.experience,
+            Category.SKILL: job_details.skill,
+            Category.EDUCATION: job_details.education,
+            Category.EXPERIENCE: job_details.experience,
         }
 
         out: dict[str, Any] = {
-            Category.SKILL.value: {},
-            Category.EDUCATION.value: {},
-            Category.EXPERIENCE.value: {},
+            Category.SKILL: {},
+            Category.EDUCATION: {},
+            Category.EXPERIENCE: {},
         }
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_map = {

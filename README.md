@@ -4,6 +4,10 @@
 
 **CV ingestion and matching service built with Django, pgvector, Datapizza pipelines, and Celery**
 
+Scoring uses category weights: `skill`, `experience`, `education`.
+The API requires all three and they must sum to `1.0` (example: `0.4 + 0.4 + 0.2`).
+Higher weight means stronger impact on the final ranking.
+
 [![Python 3.13+](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![Django](https://img.shields.io/badge/django-6.x-green.svg)](https://www.djangoproject.com/)
 [![Celery](https://img.shields.io/badge/celery-enabled-brightgreen.svg)](https://docs.celeryq.dev/)
