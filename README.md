@@ -173,7 +173,7 @@ Responses:
 
 ### Search flow
 
-Split job offer (`skill`, `experience`, `education`) -> parallel category retrieval -> merge by document -> weighted scoring.
+Split job offer (`skill`, `experience`, `education`) -> parallel category retrieval for semantic search and full text search on metadata -> merge by document -> weighted scoring.
 
 ![Search Pipeline](docs/search_pipeline.drawio.png)
 
