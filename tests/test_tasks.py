@@ -42,18 +42,19 @@ def test_ping_task_without_worker():
 
 
 @patch("src.core.tasks._refresh_batch_status")
-@patch("src.core.tasks.ingest_cv_document")
+@patch("src.core.tasks.CVIngestionPipeline")
 @patch("src.core.tasks.CVDocument")
 @patch("src.core.tasks.UploadItem")
 def test_ingest_upload_item_task_success_without_worker(
     mock_upload_item_cls,
     mock_cv_document_cls,
-    mock_ingest,
+    mock_pipeline_cls,
     mock_refresh_batch_status,
 ):
     item, batch = _build_item()
     _mock_upload_item_queryset(mock_upload_item_cls, item)
     mock_cv_document_cls.objects.get.return_value = SimpleNamespace(id="doc-1")
+    mock_pipeline = mock_pipeline_cls.return_value
 
     out = ingest_upload_item_task.apply(args=("item-1",), throw=True).get()
 
@@ -62,23 +63,24 @@ def test_ingest_upload_item_task_success_without_worker(
     assert item.started_at is not None
     assert item.completed_at is not None
     assert batch.started_at is not None
-    mock_ingest.assert_called_once()
+    mock_pipeline.ingest_cv_document.assert_called_once()
     mock_refresh_batch_status.assert_called_once_with(batch)
 
 
 @patch("src.core.tasks._refresh_batch_status")
-@patch("src.core.tasks.ingest_cv_document", side_effect=RuntimeError("temporary failure"))
+@patch("src.core.tasks.CVIngestionPipeline")
 @patch("src.core.tasks.CVDocument")
 @patch("src.core.tasks.UploadItem")
 def test_ingest_upload_item_task_retry_without_worker(
     mock_upload_item_cls,
     mock_cv_document_cls,
-    _mock_ingest,
+    mock_pipeline_cls,
     mock_refresh_batch_status,
 ):
     item, batch = _build_item()
     _mock_upload_item_queryset(mock_upload_item_cls, item)
     mock_cv_document_cls.objects.get.return_value = SimpleNamespace(id="doc-1")
+    mock_pipeline_cls.return_value.ingest_cv_document.side_effect = RuntimeError("temporary failure")
 
     with pytest.raises(Retry):
         ingest_upload_item_task.apply(args=("item-1",), throw=True)
@@ -91,18 +93,19 @@ def test_ingest_upload_item_task_retry_without_worker(
 
 
 @patch("src.core.tasks._refresh_batch_status")
-@patch("src.core.tasks.ingest_cv_document", side_effect=RuntimeError("hard failure"))
+@patch("src.core.tasks.CVIngestionPipeline")
 @patch("src.core.tasks.CVDocument")
 @patch("src.core.tasks.UploadItem")
 def test_ingest_upload_item_task_failed_after_max_retries_without_worker(
     mock_upload_item_cls,
     mock_cv_document_cls,
-    _mock_ingest,
+    mock_pipeline_cls,
     mock_refresh_batch_status,
 ):
     item, batch = _build_item()
     _mock_upload_item_queryset(mock_upload_item_cls, item)
     mock_cv_document_cls.objects.get.return_value = SimpleNamespace(id="doc-1")
+    mock_pipeline_cls.return_value.ingest_cv_document.side_effect = RuntimeError("hard failure")
 
     out = ingest_upload_item_task.apply(args=("item-1",), throw=True, retries=3).get()
 

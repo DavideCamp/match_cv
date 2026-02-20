@@ -6,11 +6,15 @@ from datapizza.clients.openai import OpenAIClient
 from datapizza.embedders.openai import OpenAIEmbedder
 from datapizza.pipeline import IngestionPipeline
 from datapizza.type import MediaBlock, Media
+from django.utils import timezone
+
+from src.core.db import PgVectorStore
+from src.core.models import CVDocument
 
 env = environ.Env()
 
 
-class InjectDocument(IngestionPipeline):
+class CVIngestionPipeline(IngestionPipeline):
     DEFAULT_VECTOR_DIMENSIONS = 1536
 
     def __init__(self):
@@ -28,6 +32,7 @@ class InjectDocument(IngestionPipeline):
         self.client = OpenAIClient(
             api_key=api_key,
         )
+        self.vector_store = PgVectorStore()
 
     @staticmethod
     def _parse_extraction_response(raw_text: str) -> dict[str, Any]:
@@ -193,3 +198,31 @@ METADATA_JSON:
             max_tokens=3000,
         )
         return self._parse_extraction_response(getattr(response, "text", "") or "")
+
+    def ingest_cv_document(self, document) -> CVDocument:
+        extracted = self.extract_metadata(document.source_file.path)
+        chunks = super().run(extracted.get("text", ""), metadata=extracted.get("metadata", {}))
+        document.ingested_at = timezone.now()
+        document.raw_text = extracted.get("text", "") or ""
+        document.metadata = extracted.get("metadata", {}) or {}
+        document.candidate_name = document.metadata.get("candidate_name", "") or ""
+        document.email = (
+            document.metadata.get("contact", {}).get("email", "") or ""
+            if isinstance(document.metadata, dict)
+            else ""
+        )
+        document.save(
+            update_fields=[
+                "ingested_at",
+                "updated_at",
+                "raw_text",
+                "metadata",
+                "email",
+                "candidate_name",
+            ]
+        )
+
+        for chunk in chunks:
+            chunk.metadata["document_id"] = str(document.id)
+        self.vector_store.add(chunks)
+        return document

@@ -7,10 +7,10 @@ import pytest
 from datapizza.clients.mock_client import MockClient
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from src.core.inject.inject import InjectDocument
+from src.core.inject.extraction import CVIngestionPipeline
 
 
-class MockInjectDocument(InjectDocument):
+class MockInjectDocument(CVIngestionPipeline):
     """
     Test double for `InjectDocument`.
     Mirrors methods used in upload flow: from_yaml, extract_metadata, run.

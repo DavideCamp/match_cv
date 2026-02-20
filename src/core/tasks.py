@@ -5,8 +5,8 @@ from __future__ import annotations
 from celery import shared_task
 from django.utils import timezone
 
+from src.core.inject.extraction import CVIngestionPipeline
 from src.core.models import CVDocument, UploadBatch, UploadItem, UploadStatus
-from src.core.services.ingestion import ingest_cv_document
 
 
 def _refresh_batch_status(batch: UploadBatch) -> None:
@@ -55,6 +55,7 @@ def ingest_upload_item_task(self, upload_item_id: str) -> str:
     """Ingest one UploadItem end-to-end and update both item and batch status."""
     max_retries = 3
     item = UploadItem.objects.select_related("batch", "document").filter(id=upload_item_id).first()
+    ingestion_pipeline = CVIngestionPipeline()
     if item is None:
         if self.request.retries < max_retries:
             raise self.retry(
@@ -81,7 +82,7 @@ def ingest_upload_item_task(self, upload_item_id: str) -> str:
             raise ValueError("Upload item has no associated CVDocument")
 
         document = CVDocument.objects.get(id=item.document_id)
-        ingest_cv_document(document)
+        ingestion_pipeline.ingest_cv_document(document)
 
         item.status = UploadStatus.SUCCESS
         item.completed_at = timezone.now()

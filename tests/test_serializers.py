@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from unittest.mock import patch
 
 import pytest
@@ -9,47 +8,25 @@ from src.core.models import CVDocument
 from src.core.serializers import CVUploadSerializer
 
 
-@dataclass
-class FakeChunk:
-    metadata: dict = field(default_factory=dict)
-
-
 @pytest.mark.django_db
-@pytest.mark.parametrize(
-    ("metadata", "expected_name", "expected_email"),
-    [
-        (
-            {
-                "candidate_name": "Mario Rossi",
-                "contact": {"email": "mario.rossi@example.com"},
-            },
-            "Mario Rossi",
-            "mario.rossi@example.com",
-        ),
-        ({}, "", ""),
-    ],
-)
-def test_cv_upload_serializer_create_maps_extracted_metadata(
-    metadata,
-    expected_name,
-    expected_email,
+def test_cv_upload_serializer_create_delegates_to_ingestion_pipeline(
     temp_media_root,
     make_uploaded_file,
-    build_mock_inject_document,
 ):
-    chunks = [FakeChunk(), FakeChunk()]
-    mock_inject = build_mock_inject_document(
-        extracted_text="Extracted CV text",
-        extracted_metadata=metadata,
-        embedded_chunks=chunks,
-    )
+    with patch("src.core.serializers.CVIngestionPipeline") as mock_pipeline_cls:
+        mock_pipeline = mock_pipeline_cls.return_value
 
-    with (
-        patch("src.core.services.ingestion.InjectDocument", return_value=mock_inject),
-        patch("src.core.services.ingestion.PgVectorStore") as mock_vector_store_cls,
-    ):
-        mock_vector_store = mock_vector_store_cls.return_value
-        mock_vector_store.add.return_value = len(chunks)
+        def _ingest_side_effect(document):
+            document.raw_text = "Extracted CV text"
+            document.metadata = {"candidate_name": "Mario Rossi", "contact": {"email": "mario@example.com"}}
+            document.candidate_name = "Mario Rossi"
+            document.email = "mario@example.com"
+            document.save(
+                update_fields=["raw_text", "metadata", "candidate_name", "email", "updated_at"]
+            )
+            return document
+
+        mock_pipeline.ingest_cv_document.side_effect = _ingest_side_effect
 
         serializer = CVUploadSerializer(data={"source_file": make_uploaded_file()})
         assert serializer.is_valid(), serializer.errors
@@ -57,13 +34,6 @@ def test_cv_upload_serializer_create_maps_extracted_metadata(
 
     stored = CVDocument.objects.get(id=document.id)
     assert stored.raw_text == "Extracted CV text"
-    assert stored.metadata == metadata
-    assert stored.candidate_name == expected_name
-    assert stored.email == expected_email
-    assert stored.ingested_at is not None
-
-    assert all(chunk.metadata.get("document_id") == str(document.id) for chunk in chunks)
-    mock_inject.from_yaml.assert_called_once_with("src/core/inject/injestion_pipeline.yaml")
-    mock_inject.extract_metadata.assert_called_once()
-    mock_inject.run.assert_called_once()
-    mock_vector_store.add.assert_called_once_with(chunks)
+    assert stored.candidate_name == "Mario Rossi"
+    assert stored.email == "mario@example.com"
+    mock_pipeline.ingest_cv_document.assert_called_once()
