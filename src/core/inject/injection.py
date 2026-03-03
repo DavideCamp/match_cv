@@ -19,7 +19,7 @@ env = environ.Env()
 class CVIngestionPipeline(IngestionPipeline):
     """Pipeline that extracts CV text/metadata, converts text into chunks, embeds them, and stores them."""
 
-    def __init__(self, config_path: str | None):
+    def __init__(self, config_path: str | None = None):
         super().__init__()
         self.embedding_model_name = env.str("EMBEDDING_MODEL_NAME")
         api_key = env.str("OPENAI_API_KEY", default=env.str("OPENAIE_API_KEY", default=""))
