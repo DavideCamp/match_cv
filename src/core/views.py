@@ -1,16 +1,18 @@
 """API view stubs for document ingestion and search runs."""
 
 import logging
+import uuid
 
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.viewsets import ModelViewSet
 
-from src.core.models import UploadBatch
+from src.core.models import UploadBatch, CVDocument
 from src.core.retrieve.pipeline import CvScreenPipeline
 from src.core.serializers import (
     CVBulkUploadCreateSerializer,
-    CVUploadSerializer,
+    CvSerializer,
     SearchRunRequestSerializer,
 )
 
@@ -22,7 +24,7 @@ class CVUploadView(APIView):
 
     def post(self, request):
         """Validate and ingest a single uploaded CV synchronously."""
-        serializer = CVUploadSerializer(data=request.data)
+        serializer = CvSerializer(data=request.data)
         if not serializer.is_valid():
             logger.warning("CV upload validation failed: %s", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -118,3 +120,21 @@ class CVBulkUploadStatusView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class CvViewSet(ModelViewSet):
+    serializer_class = CvSerializer
+    queryset = CVDocument.objects.all()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        ids = self.request.GET.getlist("ids")
+        if ids:
+            try:
+                ids = [str(uuid.UUID(x)) for x in ids]
+                queryset = queryset.filter(id__in=ids)
+            except ValueError:
+                queryset = queryset.none()
+
+        return queryset
