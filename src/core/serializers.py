@@ -2,7 +2,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from src.core.inject.injection import CVIngestionPipeline
-from src.core.models import CVDocument, UploadBatch, UploadStatus
+from src.core.models import CVDocument, UploadBatch, JobStatus
 from src.core.tasks import ingest_upload_item_task
 
 
@@ -52,7 +52,7 @@ class CVBulkUploadCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         files = validated_data["files"]
         batch = UploadBatch.objects.create(
-            status=UploadStatus.PENDING,
+            status=JobStatus.PENDING,
             total_files=len(files),
             processed_files=0,
             failed_files=0,
@@ -64,7 +64,7 @@ class CVBulkUploadCreateSerializer(serializers.Serializer):
             item = batch.items.create(
                 document=document,
                 filename=file_obj.name,
-                status=UploadStatus.PENDING,
+                status=JobStatus.PENDING,
             )
             transaction.on_commit(
                 lambda item_id=str(item.id): ingest_upload_item_task.delay(item_id)

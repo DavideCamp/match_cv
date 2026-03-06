@@ -7,7 +7,7 @@ from src.core.views import (
     CVBulkUploadStatusView,
     CVBulkUploadView,
     CVUploadView,
-    SearchRunCreateView,
+    SearchRunView,
     CvViewSet,
 )
 
@@ -21,7 +21,9 @@ urlpatterns = [
         CVBulkUploadStatusView.as_view(),
         name="cv-bulk-upload-status",
     ),
-    path("search-runs/", SearchRunCreateView.as_view(), name="search-run-create"),
+    path("search-runs/", SearchRunView.as_view(), name="search-run-create"),
+    path(
+        "search-runs/<int:run_id>/", SearchRunView.as_view(), name="search-run-update" ),
     path(
         "cv/",
         CvViewSet.as_view({"get": "list"}),

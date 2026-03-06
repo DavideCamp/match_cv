@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 from celery.exceptions import Retry
 
-from src.core.models import UploadStatus
+from src.core.models import JobStatus
 from src.core.tasks import ingest_upload_item_task, ping
 
 
-def _build_item(*, status: str = UploadStatus.PENDING, with_document: bool = True):
+def _build_item(*, status: str = JobStatus.PENDING, with_document: bool = True):
     batch = SimpleNamespace(
         started_at=None,
-        status=UploadStatus.PENDING,
+        status=JobStatus.PENDING,
         save=MagicMock(),
     )
     item = SimpleNamespace(
@@ -59,7 +59,7 @@ def test_ingest_upload_item_task_success_without_worker(
     out = ingest_upload_item_task.apply(args=("item-1",), throw=True).get()
 
     assert out == "item-1"
-    assert item.status == UploadStatus.SUCCESS
+    assert item.status == JobStatus.SUCCESS
     assert item.started_at is not None
     assert item.completed_at is not None
     assert batch.started_at is not None
@@ -85,7 +85,7 @@ def test_ingest_upload_item_task_retry_without_worker(
     with pytest.raises(Retry):
         ingest_upload_item_task.apply(args=("item-1",), throw=True)
 
-    assert item.status == UploadStatus.PENDING
+    assert item.status == JobStatus.PENDING
     assert "retrying (1/3)" in item.error_message
     # Called once in except retry branch and once in finally.
     assert mock_refresh_batch_status.call_count == 2
@@ -110,7 +110,7 @@ def test_ingest_upload_item_task_failed_after_max_retries_without_worker(
     out = ingest_upload_item_task.apply(args=("item-1",), throw=True, retries=3).get()
 
     assert out == "item-1"
-    assert item.status == UploadStatus.FAILED
+    assert item.status == JobStatus.FAILED
     assert item.completed_at is not None
     assert item.error_message == "hard failure"
     mock_refresh_batch_status.assert_called_once_with(batch)
