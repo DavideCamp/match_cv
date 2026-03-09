@@ -96,3 +96,20 @@ class Chunk(models.Model):
 
     class Meta:
         ordering = ["id"]
+
+
+class JobDescription(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    text = models.TextField()
+    skill_text = models.TextField(blank=True, default="")
+    education_text = models.TextField(blank=True, default="")
+    experience_text = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    skill = VectorField(dimensions=1536)
+    education = VectorField(dimensions=1536)
+    experience = VectorField(dimensions=1536)
+
+    class Meta:
+        ordering = ["id"]

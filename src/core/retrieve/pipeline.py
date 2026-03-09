@@ -1,14 +1,14 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 import environ
 from datapizza.clients.openai import OpenAIClient
 from pydantic import BaseModel, Field
 
 from src.core.db import PgVectorStore
-from src.core.models import CVDocument
+from src.core.models import CVDocument, JobDescription
 from src.core.retrieve.rag import RagPipeline
 
 env = environ.Env()
@@ -350,12 +350,28 @@ class CvScreenPipeline:
                 "Do not invent requirements not present in the input."
             ),
         )
-        # TODO - Open issue: Runtime is correct but static typing in datapizza is stricter.
-        return response.structured_data[0]
+        # datapizza currently types structured_data as BaseModel; runtime is JobProposalSplit.
+        return cast(JobProposalSplit, response.structured_data[0])
 
-    def run(self, job_description, weights: dict[str, float], top_k: int) -> list[dict[str, Any]]:
+    def run(
+        self,
+        job_description: str | None,
+        weights: dict[str, float],
+        top_k: int,
+        job_description_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Execute full retrieval pipeline and return scored CV results."""
-        job_details = self.split_job_description(job_description)
+
+        if job_description_id:
+            stored_job_description = JobDescription.objects.get(id=job_description_id)
+            job_details = JobProposalSplit(
+                skill=(stored_job_description.skill_text or "").strip(),
+                education=(stored_job_description.education_text or "").strip(),
+                experience=(stored_job_description.experience_text or "").strip(),
+            )
+        else:
+            job_details = self.split_job_description(job_description or "")
+
         semantic_result = self.semantic_search(job_details, k=top_k)
         metadata_result = self.compute_metadata(job_details, k=top_k)
 

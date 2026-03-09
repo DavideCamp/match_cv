@@ -6,6 +6,7 @@ from src.core.views import (
     CVBulkUploadStatusView,
     CVBulkUploadView,
     CVUploadView,
+    JobDescriptionView,
     SearchRunCreateView,
 )
 
@@ -17,5 +18,6 @@ urlpatterns = [
         CVBulkUploadStatusView.as_view(),
         name="cv-bulk-upload-status",
     ),
+    path("job-descriptions/", JobDescriptionView.as_view(), name="job-description-create"),
     path("search-runs/", SearchRunCreateView.as_view(), name="search-run-create"),
 ]

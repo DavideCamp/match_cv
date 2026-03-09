@@ -11,6 +11,7 @@ from src.core.retrieve.pipeline import CvScreenPipeline
 from src.core.serializers import (
     CVBulkUploadCreateSerializer,
     CVUploadSerializer,
+    JobDescriptionSerializer,
     SearchRunRequestSerializer,
 )
 
@@ -39,22 +40,29 @@ class SearchRunCreateView(APIView):
         if not serializer.is_valid():
             if "job_offer_text" in serializer.errors:
                 return Response(
-                    {"error": "job_offer_text is required"},
+                    {"error": serializer.errors["job_offer_text"][0]},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if "top_k" in serializer.errors:
                 return Response(
                     {"error": "top_k must be integers"}, status=status.HTTP_400_BAD_REQUEST
                 )
+            if "error" in serializer.errors:
+                return Response(
+                    {"error": serializer.errors["error"][0]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             payload = serializer.validated_data
+            job_description_id = payload.get("job_description_id")
             pipeline = CvScreenPipeline()
             results = pipeline.run(
-                payload["job_offer_text"],
-                payload["weights"],
-                payload["top_k"],
+                payload.get("job_offer_text"),
+                payload.get("weights"),
+                payload.get("top_k"),
+                str(job_description_id) if job_description_id else None,
             )
             return Response(results, status=status.HTTP_200_OK)
         except Exception:
@@ -118,3 +126,16 @@ class CVBulkUploadStatusView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+class JobDescriptionView(APIView):
+    """Get job description for an ingestion job."""
+
+    serializer_class = JobDescriptionSerializer
+
+    def post(self, request):
+        """Validate job description and return job description for an ingestion job."""
+        serializer = self.serializer_class(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

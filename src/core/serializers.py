@@ -1,8 +1,9 @@
 from django.db import transaction
 from rest_framework import serializers
 
+from src.core.inject.inject_job_description import JobDescriptionIngestionJob
 from src.core.inject.injection import CVIngestionPipeline
-from src.core.models import CVDocument, UploadBatch, UploadStatus
+from src.core.models import CVDocument, JobDescription, UploadBatch, UploadStatus
 from src.core.tasks import ingest_upload_item_task
 
 
@@ -90,14 +91,14 @@ class SearchRunRequestSerializer(serializers.Serializer):
     """Validate input payload for search endpoint."""
 
     job_offer_text = serializers.CharField(
-        required=True,
+        required=False,
         allow_blank=False,
         trim_whitespace=True,
         error_messages={
-            "required": "job_offer_text is required",
-            "blank": "job_offer_text is required",
+            "blank": "job_offer_text is required when job_description_id is not provided",
         },
     )
+    job_description_id = serializers.UUIDField(required=False)
     top_k = serializers.IntegerField(
         required=False,
         default=10,
@@ -128,5 +129,34 @@ class SearchRunRequestSerializer(serializers.Serializer):
         return normalized
 
     def validate(self, attrs):
+        if not attrs.get("job_offer_text") and not attrs.get("job_description_id"):
+            raise serializers.ValidationError(
+                {"error": "job_offer_text or job_description_id is required"}
+            )
         attrs.setdefault("weights", {"skill": 0.4, "experience": 0.3, "education": 0.3})
         return attrs
+
+
+class JobDescriptionSerializer(serializers.ModelSerializer):
+    """Validate and ingest a job description with per-category embeddings."""
+
+    class Meta:
+        model = JobDescription
+        fields = "__all__"
+        read_only_fields = (
+            "id",
+            "metadata",
+            "skill_text",
+            "education_text",
+            "experience_text",
+            "skill",
+            "education",
+            "experience",
+            "created_at",
+            "updated_at",
+        )
+
+    @transaction.atomic
+    def create(self, validated_data):
+        ingestion_job = JobDescriptionIngestionJob()
+        return ingestion_job.ingest_job_description(validated_data["text"])

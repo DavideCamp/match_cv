@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.core.models import CVDocument
-from src.core.serializers import CVUploadSerializer
+from src.core.models import CVDocument, JobDescription
+from src.core.serializers import CVUploadSerializer, JobDescriptionSerializer
 
 
 @pytest.mark.django_db
@@ -37,3 +37,21 @@ def test_cv_upload_serializer_create_delegates_to_ingestion_pipeline(
     assert stored.candidate_name == "Mario Rossi"
     assert stored.email == "mario@example.com"
     mock_pipeline.ingest_cv_document.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_job_description_serializer_create_delegates_to_ingestion_job():
+    with patch("src.core.serializers.JobDescriptionIngestionJob") as mock_job_cls:
+        mock_job = mock_job_cls.return_value
+        mock_job.ingest_job_description.return_value = JobDescription(
+            text="Backend engineer with Python",
+            metadata={"split": {"skill": "python", "education": "", "experience": "3+ years"}},
+            skill=[0.1] * 1536,
+            education=[0.2] * 1536,
+            experience=[0.3] * 1536,
+        )
+        serializer = JobDescriptionSerializer(data={"text": "Backend engineer with Python"})
+        assert serializer.is_valid(), serializer.errors
+        serializer.save()
+
+    mock_job.ingest_job_description.assert_called_once_with("Backend engineer with Python")

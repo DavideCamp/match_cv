@@ -27,8 +27,11 @@ def test_cv_upload_view_success(mock_serializer_cls, api_client, make_uploaded_f
 @pytest.mark.parametrize(
     ("payload", "expected_error"),
     [
-        ({}, "job_offer_text is required"),
-        ({"job_offer_text": "   "}, "job_offer_text is required"),
+        ({}, "job_offer_text or job_description_id is required"),
+        (
+            {"job_offer_text": "   "},
+            "job_offer_text is required when job_description_id is not provided",
+        ),
         ({"job_offer_text": "Backend Engineer", "top_k": "x"}, "top_k must be integers"),
     ],
 )
@@ -54,7 +57,31 @@ def test_search_run_create_view_success(mock_pipeline_cls, api_client):
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == [{"candidate_name": "Mario Rossi", "score": 0.9}]
-    mock_pipeline.run.assert_called_once_with(payload["job_offer_text"], payload["weights"], 5)
+    mock_pipeline.run.assert_called_once_with(
+        payload["job_offer_text"],
+        payload["weights"],
+        5,
+        None,
+    )
+
+
+@patch("src.core.views.CvScreenPipeline")
+def test_search_run_create_view_success_with_job_description_id(mock_pipeline_cls, api_client):
+    mock_pipeline = MagicMock()
+    mock_pipeline.run.return_value = [{"candidate_name": "Mario Rossi", "score": 0.9}]
+    mock_pipeline_cls.return_value = mock_pipeline
+
+    payload = {"job_description_id": "36ec8f27-17b1-4fdd-b3f6-ac6ca42f4c17", "top_k": 5}
+    response = api_client.post(reverse("search-run-create"), payload, format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == [{"candidate_name": "Mario Rossi", "score": 0.9}]
+    mock_pipeline.run.assert_called_once_with(
+        None,
+        {"skill": 0.4, "experience": 0.3, "education": 0.3},
+        5,
+        payload["job_description_id"],
+    )
 
 
 @patch("src.core.views.CvScreenPipeline")
@@ -71,3 +98,20 @@ def test_search_run_create_view_pipeline_error(mock_pipeline_cls, api_client):
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     assert response.json()["error"] == "internal server error"
+
+
+@patch("src.core.views.JobDescriptionView.serializer_class")
+def test_job_description_view_success(mock_serializer_cls, api_client):
+    mock_serializer = MagicMock()
+    mock_serializer.data = {"id": "job-id"}
+    mock_serializer_cls.return_value = mock_serializer
+
+    response = api_client.post(
+        reverse("job-description-create"),
+        {"text": "Backend engineer with Python"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    mock_serializer.is_valid.assert_called_once_with()
+    mock_serializer.save.assert_called_once()
