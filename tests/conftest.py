@@ -5,10 +5,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from datapizza.clients.mock_client import MockClient
+from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from src.core.inject.injection import CVIngestionPipeline
 
+User = get_user_model()
 
 class MockInjectDocument(CVIngestionPipeline):
     """
@@ -41,12 +43,18 @@ class MockInjectDocument(CVIngestionPipeline):
         _ = metadata
         return self._embedded_chunks
 
-
 @pytest.fixture
-def api_client():
+def api_client(is_authenticated: bool = True):
     from rest_framework.test import APIClient
+    if is_authenticated:
+        user = User.objects.create(username="user")
+        client = APIClient()
+        client.force_authenticate(user=user)
+    else:
+        client = APIClient()
+    return client
 
-    return APIClient()
+
 
 
 @pytest.fixture

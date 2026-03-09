@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from src.core.models import CVDocument, JobDescription
-from src.core.serializers import CVUploadSerializer, JobDescriptionSerializer
+from src.core.serializers import CvSerializer, JobDescriptionSerializer
 
 
 @pytest.mark.django_db
@@ -28,7 +28,7 @@ def test_cv_upload_serializer_create_delegates_to_ingestion_pipeline(
 
         mock_pipeline.ingest_cv_document.side_effect = _ingest_side_effect
 
-        serializer = CVUploadSerializer(data={"source_file": make_uploaded_file()})
+        serializer = CvSerializer(data={"source_file": make_uploaded_file()})
         assert serializer.is_valid(), serializer.errors
         document = serializer.save()
 

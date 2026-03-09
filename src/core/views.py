@@ -1,17 +1,20 @@
 """API view stubs for document ingestion and search runs."""
-
+import copy
 import logging
+import uuid
 
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.viewsets import ModelViewSet
 
-from src.core.models import UploadBatch
-from src.core.retrieve.pipeline import CvScreenPipeline
+from src.core.models import UploadBatch, CVDocument, SearchRun, JobStatus, JobDescription
+from src.core.tasks import search_run_task, DEFAULT_STEPS
 from src.core.serializers import (
     CVBulkUploadCreateSerializer,
-    CVUploadSerializer,
-    JobDescriptionSerializer,
+    CvSerializer,
+JobDescriptionSerializer,
     SearchRunRequestSerializer,
 )
 
@@ -23,7 +26,7 @@ class CVUploadView(APIView):
 
     def post(self, request):
         """Validate and ingest a single uploaded CV synchronously."""
-        serializer = CVUploadSerializer(data=request.data)
+        serializer = CvSerializer(data=request.data)
         if not serializer.is_valid():
             logger.warning("CV upload validation failed: %s", serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -31,46 +34,52 @@ class CVUploadView(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class SearchRunCreateView(APIView):
+class SearchRunView(APIView):
     """Create and execute a search run."""
 
     def post(self, request):
         """Run retrieval+scoring pipeline for a job offer and return ranked CVs."""
         serializer = SearchRunRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            if "job_offer_text" in serializer.errors:
-                return Response(
-                    {"error": serializer.errors["job_offer_text"][0]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if "top_k" in serializer.errors:
-                return Response(
-                    {"error": "top_k must be integers"}, status=status.HTTP_400_BAD_REQUEST
-                )
-            if "error" in serializer.errors:
-                return Response(
-                    {"error": serializer.errors["error"][0]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        progress_steps = copy.deepcopy(DEFAULT_STEPS)
+        job_description_id = payload.get("job_description_id", None)
+
+        search_run = SearchRun.objects.create(
+            status=JobStatus.PENDING,
+            progress_steps=progress_steps,
+            job_offer_text=payload.get("job_offer_text", ""),
+            weights=payload["weights"],
+            top_k=payload["top_k"],
+            job_description_id=job_description_id,
+
+        )
+
+        search_run_task.delay(str(search_run.id))
+
+        return Response(
+            {
+                "run_id": str(search_run.id),
+                "status": search_run.status,
+                "steps": search_run.progress_steps,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    def get(self, request, run_id: str):
 
         try:
-            payload = serializer.validated_data
-            job_description_id = payload.get("job_description_id")
-            pipeline = CvScreenPipeline()
-            results = pipeline.run(
-                payload.get("job_offer_text"),
-                payload.get("weights"),
-                payload.get("top_k"),
-                str(job_description_id) if job_description_id else None,
-            )
-            return Response(results, status=status.HTTP_200_OK)
-        except Exception:
-            logger.exception("search pipeline execution failed")
-            return Response(
-                {"error": "internal server error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            run = SearchRun.objects.get(id=run_id)
+        except SearchRun.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "run_id": str(run.id),
+            "status": run.status,
+            "steps": run.progress_steps,
+            "results": run.results if run.status == JobStatus.SUCCESS else [],
+            "error": run.error if run.status == JobStatus.FAILED else "",
+        })
 
 
 class CVBulkUploadView(APIView):
@@ -127,6 +136,27 @@ class CVBulkUploadStatusView(APIView):
             status=status.HTTP_200_OK,
         )
 
+
+class CvViewSet(ModelViewSet):
+    serializer_class = CvSerializer
+    queryset = CVDocument.objects.all()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        ids = self.request.GET.getlist("ids")
+        if ids:
+            try:
+                ids = [str(uuid.UUID(x)) for x in ids]
+                queryset = queryset.filter(id__in=ids)
+            except ValueError:
+                queryset = queryset.none()
+
+        return queryset
+
+
+
+
 class JobDescriptionView(APIView):
     """Get job description for an ingestion job."""
 
@@ -139,3 +169,9 @@ class JobDescriptionView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get(self, request):
+        """Get all job descriptions."""
+        job_descriptions = JobDescription.objects.all()
+        serializer = self.serializer_class(job_descriptions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
