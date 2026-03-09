@@ -7,7 +7,7 @@ from src.core.models import CVDocument, JobDescription, UploadBatch, UploadStatu
 from src.core.tasks import ingest_upload_item_task
 
 
-class CVUploadSerializer(serializers.ModelSerializer):
+class CvSerializer(serializers.ModelSerializer):
     class Meta:
         model = CVDocument
         fields = "__all__"
@@ -38,7 +38,7 @@ class CVBulkUploadCreateSerializer(serializers.Serializer):
     @staticmethod
     def validate_files(value):
         for file_obj in value:
-            serializer = CVUploadSerializer(data={"source_file": file_obj})
+            serializer = CvSerializer(data={"source_file": file_obj})
             if not serializer.is_valid():
                 raise serializers.ValidationError(
                     {

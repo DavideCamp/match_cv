@@ -6,6 +6,8 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
+from src.core.models import CVDocument
+
 
 @patch("src.core.views.CVUploadSerializer")
 def test_cv_upload_view_success(mock_serializer_cls, api_client, make_uploaded_file):
@@ -99,6 +101,15 @@ def test_search_run_create_view_pipeline_error(mock_pipeline_cls, api_client):
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
     assert response.json()["error"] == "internal server error"
 
+@pytest.mark.django_db
+def test_list_cv(api_client):
+    cv1 = CVDocument.objects.create()
+    cv2 = CVDocument.objects.create()
+    url = reverse("cv-list")
+    response = api_client.get(url, {"ids": [str(cv1.id), str(cv2.id)]})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 2
 
 @patch("src.core.views.JobDescriptionView.serializer_class")
 def test_job_description_view_success(mock_serializer_cls, api_client):
