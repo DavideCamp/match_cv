@@ -1,5 +1,5 @@
 """API view stubs for document ingestion and search runs."""
-
+import copy
 import logging
 import uuid
 
@@ -8,8 +8,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from src.core.models import UploadBatch, CVDocument
-from src.core.retrieve.pipeline import CvScreenPipeline
+from src.core.models import UploadBatch, CVDocument, SearchRun, JobStatus
+from src.core.tasks import search_run_task, DEFAULT_STEPS
 from src.core.serializers import (
     CVBulkUploadCreateSerializer,
     CvSerializer,
@@ -33,46 +33,52 @@ class CVUploadView(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class SearchRunCreateView(APIView):
+class SearchRunView(APIView):
     """Create and execute a search run."""
 
     def post(self, request):
         """Run retrieval+scoring pipeline for a job offer and return ranked CVs."""
         serializer = SearchRunRequestSerializer(data=request.data)
-        if not serializer.is_valid():
-            if "job_offer_text" in serializer.errors:
-                return Response(
-                    {"error": serializer.errors["job_offer_text"][0]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if "top_k" in serializer.errors:
-                return Response(
-                    {"error": "top_k must be integers"}, status=status.HTTP_400_BAD_REQUEST
-                )
-            if "error" in serializer.errors:
-                return Response(
-                    {"error": serializer.errors["error"][0]},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            return Response({"error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        progress_steps = copy.deepcopy(DEFAULT_STEPS)
+        job_description_id = payload.get("job_description_id", None)
+
+        search_run = SearchRun.objects.create(
+            status=JobStatus.PENDING,
+            progress_steps=progress_steps,
+            job_offer_text=payload["job_offer_text"],
+            weights=payload["weights"],
+            top_k=payload["top_k"],
+            job_description_id=job_description_id,
+
+        )
+
+        search_run_task.delay(str(search_run.id))
+
+        return Response(
+            {
+                "run_id": str(search_run.id),
+                "status": search_run.status,
+                "steps": search_run.progress_steps,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    def get(self, request, run_id: str):
 
         try:
-            payload = serializer.validated_data
-            job_description_id = payload.get("job_description_id")
-            pipeline = CvScreenPipeline()
-            results = pipeline.run(
-                payload.get("job_offer_text"),
-                payload.get("weights"),
-                payload.get("top_k"),
-                str(job_description_id) if job_description_id else None,
-            )
-            return Response(results, status=status.HTTP_200_OK)
-        except Exception:
-            logger.exception("search pipeline execution failed")
-            return Response(
-                {"error": "internal server error"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            run = SearchRun.objects.get(id=run_id)
+        except SearchRun.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            "run_id": str(run.id),
+            "status": run.status,
+            "steps": run.progress_steps,
+            "results": run.results if run.status == JobStatus.SUCCESS else [],
+            "error": run.error if run.status == JobStatus.FAILED else "",
+        })
 
 
 class CVBulkUploadView(APIView):

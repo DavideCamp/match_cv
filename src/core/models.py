@@ -29,7 +29,7 @@ class CVDocument(models.Model):
         return f"{self.candidate_name} ({self.id})"
 
 
-class UploadStatus(models.TextChoices):
+class JobStatus(models.TextChoices):
     PENDING = "PENDING", "Pending"
     RUNNING = "RUNNING", "Running"
     SUCCESS = "SUCCESS", "Success"
@@ -41,8 +41,8 @@ class UploadBatch(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     status = models.CharField(
         max_length=16,
-        choices=UploadStatus.choices,
-        default=UploadStatus.PENDING,
+        choices=JobStatus.choices,
+        default=JobStatus.PENDING,
         db_index=True,
     )
     total_files = models.PositiveIntegerField(default=0)
@@ -69,8 +69,8 @@ class UploadItem(models.Model):
     filename = models.CharField(max_length=255, blank=True)
     status = models.CharField(
         max_length=16,
-        choices=UploadStatus.choices,
-        default=UploadStatus.PENDING,
+        choices=JobStatus.choices,
+        default=JobStatus.PENDING,
         db_index=True,
     )
     error_message = models.TextField(blank=True)
@@ -96,6 +96,20 @@ class Chunk(models.Model):
 
     class Meta:
         ordering = ["id"]
+
+
+class SearchRun(models.Model):
+    status = models.CharField(max_length=20, choices=JobStatus.choices, default=JobStatus.PENDING)
+    progress_steps = models.JSONField(default=list, blank=True)
+    job_offer_text = models.TextField()
+    top_k = models.PositiveIntegerField(default=10)
+    weights = models.JSONField(default=dict, blank=True)
+
+    results = models.JSONField(default=list, blank=True)
+
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
 
 class JobDescription(models.Model):

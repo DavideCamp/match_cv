@@ -1,7 +1,7 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import environ
 from datapizza.clients.openai import OpenAIClient
@@ -199,10 +199,11 @@ def dedup_results_by_email(results: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 class CvScreenPipeline:
-    def __init__(self):
+    def __init__(self, progress_step: Callable):
         self.client = OpenAIClient(model="gpt-4o-mini", api_key=API_KEY)
         self.vector_store = PgVectorStore()
         self.rag_pipeline = RagPipeline()
+        self.progress_step = progress_step
 
     @staticmethod
     def find_occurrences(search_result: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -240,9 +241,9 @@ class CvScreenPipeline:
 
         return {
             doc_id: {
-                Category.SKILL: by_category[Category.SKILL.value].get(doc_id, 0.0),
-                Category.EDUCATION: by_category[Category.EDUCATION.value].get(doc_id, 0.0),
-                Category.EXPERIENCE: by_category[Category.EXPERIENCE.value].get(doc_id, 0.0),
+                Category.SKILL.value: by_category[Category.SKILL.value].get(doc_id, 0.0),
+                Category.EDUCATION.value: by_category[Category.EDUCATION.value].get(doc_id, 0.0),
+                Category.EXPERIENCE.value: by_category[Category.EXPERIENCE.value].get(doc_id, 0.0),
             }
             for doc_id in all_doc_ids
         }
@@ -274,14 +275,14 @@ class CvScreenPipeline:
     def compute_metadata(self, job_details: JobProposalSplit, k: int = 25) -> dict[str, Any]:
         """Compute metadata-only retrieval for skill/education/experience in parallel."""
         category_queries = {
-            Category.SKILL: job_details.skill,
-            Category.EDUCATION: job_details.education,
-            Category.EXPERIENCE: job_details.experience,
+            Category.SKILL.value: job_details.skill,
+            Category.EDUCATION.value: job_details.education,
+            Category.EXPERIENCE.value: job_details.experience,
         }
         out: dict[str, Any] = {
-            Category.SKILL: {"retriever": []},
-            Category.EDUCATION: {"retriever": []},
-            Category.EXPERIENCE: {"retriever": []},
+            Category.SKILL.value: {"retriever": []},
+            Category.EDUCATION.value: {"retriever": []},
+            Category.EXPERIENCE.value: {"retriever": []},
         }
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_map = {
@@ -295,6 +296,7 @@ class CvScreenPipeline:
 
     def run_category_search(self, query: str, k: int) -> dict[str, Any]:
         """Run one RAG retrieval for a single category query."""
+        print('category', query)
         q = (query or "").strip()
         if not q:
             return {}
@@ -316,15 +318,15 @@ class CvScreenPipeline:
     def semantic_search(self, job_details: JobProposalSplit, k: int = 25) -> dict[str, Any]:
         """Run skill/education/experience searches in parallel and return grouped outputs."""
         category_queries = {
-            Category.SKILL: job_details.skill,
-            Category.EDUCATION: job_details.education,
-            Category.EXPERIENCE: job_details.experience,
+            Category.SKILL.value: job_details.skill,
+            Category.EDUCATION.value: job_details.education,
+            Category.EXPERIENCE.value: job_details.experience,
         }
 
         out: dict[str, Any] = {
-            Category.SKILL: {},
-            Category.EDUCATION: {},
-            Category.EXPERIENCE: {},
+            Category.SKILL.value: {},
+            Category.EDUCATION.value: {},
+            Category.EXPERIENCE.value: {},
         }
         with ThreadPoolExecutor(max_workers=3) as executor:
             future_map = {
@@ -362,6 +364,8 @@ class CvScreenPipeline:
     ) -> list[dict[str, Any]]:
         """Execute full retrieval pipeline and return scored CV results."""
 
+        self.progress_step('split', False, 'start splitting')
+
         if job_description_id:
             stored_job_description = JobDescription.objects.get(id=job_description_id)
             job_details = JobProposalSplit(
@@ -372,13 +376,23 @@ class CvScreenPipeline:
         else:
             job_details = self.split_job_description(job_description or "")
 
-        semantic_result = self.semantic_search(job_details, k=top_k)
-        metadata_result = self.compute_metadata(job_details, k=top_k)
+        self.progress_step('split', True, f"splitting job ")
 
+        self.progress_step('semantic', False, "Facendo RAG per ogni category")
+        semantic_result = self.semantic_search(job_details, k=top_k)
+        self.progress_step("semantic", True, f"Trovati {len(semantic_result)} match")
+
+        self.progress_step('metadata', False, f"Full text search per ogn ")
+        metadata_result = self.compute_metadata(job_details, k=top_k)
+        self.progress_step("metadata", True, f"Trovati {len(metadata_result)} match")
+
+        self.progress_step("merge", False, f"Merge dei risultati precedenti")
         semantic_occ = self.find_occurrences(semantic_result)
         metadata_occ = self.find_occurrences(metadata_result)
         occurrences = self.merge_occurrences(semantic_occ, metadata_occ)
+        self.progress_step("merge", True, f"Trovati {len(occurrences)} match")
 
+        self.progress_step("scoring", False, f"calcolando i pesi per i migliori cv")
         exp_meta_scores = compute_experience_metadata_score(job_details)
         occurrences = apply_experience_metadata_boost(occurrences, exp_meta_scores)
         occurrences = normalize_occurrences(occurrences)
@@ -395,4 +409,7 @@ class CvScreenPipeline:
             for doc_id, categories in occurrences.items()
             if doc_id in cvs
         ]
-        return dedup_results_by_email(final_results)
+        deduped_results = dedup_results_by_email(final_results)
+        limited_results = deduped_results[: max(1, int(top_k))]
+        self.progress_step("scoring", True, f"trovati {len(limited_results)} match")
+        return limited_results
