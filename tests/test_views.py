@@ -10,7 +10,7 @@ from rest_framework import status
 from src.core.models import CVDocument, JobStatus
 from src.core.tasks import DEFAULT_STEPS
 
-
+@pytest.mark.django_db
 @patch("src.core.views.CvSerializer")
 def test_cv_upload_view_success(mock_serializer_cls, api_client, make_uploaded_file):
     mock_serializer = MagicMock()
@@ -28,7 +28,7 @@ def test_cv_upload_view_success(mock_serializer_cls, api_client, make_uploaded_f
     mock_serializer.is_valid.assert_called_once_with()
     mock_serializer.save.assert_called_once()
 
-
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     ("payload", "error_key", "expected_error"),
     [
@@ -47,7 +47,7 @@ def test_search_run_create_view_bad_request(payload, error_key, expected_error, 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()[error_key][0] == expected_error
 
-
+@pytest.mark.django_db
 @patch("src.core.views.search_run_task.delay")
 @patch("src.core.views.SearchRun.objects.create")
 def test_search_run_create_view_success(mock_create, mock_delay, api_client):
@@ -80,7 +80,7 @@ def test_search_run_create_view_success(mock_create, mock_delay, api_client):
     )
     mock_delay.assert_called_once_with(str(run_id))
 
-
+@pytest.mark.django_db
 @patch("src.core.views.search_run_task.delay")
 @patch("src.core.views.SearchRun.objects.create")
 def test_search_run_create_view_success_with_job_description_id(mock_create, mock_delay, api_client):
@@ -107,7 +107,7 @@ def test_search_run_create_view_success_with_job_description_id(mock_create, moc
     )
     mock_delay.assert_called_once_with(str(run_id))
 
-
+@pytest.mark.django_db
 @patch("src.core.views.search_run_task.delay", side_effect=RuntimeError("queue unavailable"))
 @patch("src.core.views.SearchRun.objects.create")
 def test_search_run_create_view_task_enqueue_error(mock_create, _mock_delay, api_client):
@@ -135,7 +135,7 @@ def test_list_cv(api_client):
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 2
 
-
+@pytest.mark.django_db
 @patch("src.core.views.JobDescriptionView.serializer_class")
 def test_job_description_view_success(mock_serializer_cls, api_client):
     mock_serializer = MagicMock()

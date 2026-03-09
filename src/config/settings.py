@@ -1,5 +1,6 @@
 """Django settings for the match-cv project."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -16,6 +17,20 @@ ALLOWED_HOSTS = [host.strip() for host in env.list("ALLOWED_HOSTS", default=["*"
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+}
+
 INSTALLED_APPS = [
     "corsheaders",
     "django.contrib.admin",
@@ -26,6 +41,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.postgres",
     "pgvector.django",
+    "rest_framework_simplejwt",
     "src.core",
 ]
 
