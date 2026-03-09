@@ -4,11 +4,12 @@ import logging
 import uuid
 
 from rest_framework import status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 
-from src.core.models import UploadBatch, CVDocument, SearchRun, JobStatus
+from src.core.models import UploadBatch, CVDocument, SearchRun, JobStatus, JobDescription
 from src.core.tasks import search_run_task, DEFAULT_STEPS
 from src.core.serializers import (
     CVBulkUploadCreateSerializer,
@@ -168,3 +169,9 @@ class JobDescriptionView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def get(self, request):
+        """Get all job descriptions."""
+        job_descriptions = JobDescription.objects.all()
+        serializer = self.serializer_class(job_descriptions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
