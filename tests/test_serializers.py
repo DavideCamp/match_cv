@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from src.core.models import CVDocument,  JobDescription
-from src.core.serializers import CvSerializer, JobDescription
+from src.core.models import CVDocument, JobDescription
+from src.core.serializers import CvSerializer, JobDescriptionSerializer
 
 
 @pytest.mark.django_db

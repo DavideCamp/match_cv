@@ -47,7 +47,7 @@ class SearchRunView(APIView):
         search_run = SearchRun.objects.create(
             status=JobStatus.PENDING,
             progress_steps=progress_steps,
-            job_offer_text=payload["job_offer_text"],
+            job_offer_text=payload.get("job_offer_text", ""),
             weights=payload["weights"],
             top_k=payload["top_k"],
             job_description_id=job_description_id,
